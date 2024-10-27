@@ -1,9 +1,10 @@
 from flask import Flask, request
-from db_data import stores
+from db import db 
 from flask_smorest import abort, Blueprint
 from flask.views import MethodView
+from models.store import StoreModel
 from schema import StoreSchema
-
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 import uuid
 
 blp = Blueprint("store", __name__, description="CRUD operation on stores")
@@ -12,44 +13,42 @@ blp = Blueprint("store", __name__, description="CRUD operation on stores")
 class Store(MethodView):
     @blp.response(200, StoreSchema)
     def get(self, store_id):
-        if stores.get(store_id)  != None :
-            return  stores[store_id]
-        else:
-            return {"msg": "the store doesnot found"},404
+       store = StoreModel.query.get_or_404(store_id)
+       return store
         
     def delete(self, store_id):
-        try:
-            del stores[store_id]
-            return {"message": "your store deleted"},200
-        except KeyError:
-            abort(404, msg="your store not found")
+        store = StoreModel.query.get_or_404(store_id)
+        db.session.delete(store)
+        db.session.commit()
+        return {"message": "store deleted successufly"}
 
 
 @blp.route("/store")
 class StoreList(MethodView):
     @blp.response(200, StoreSchema(many=True))
     def get(self):
-        if len(stores) != 0:
-            
-            return  stores.values()
-        else :
-            abort(404, message="there is no store until now")
+        stores = StoreModel.query.all()
+        return stores
 
     @blp.arguments(StoreSchema)
     @blp.response(201, StoreSchema)
     def post(self, store_data):
-        #       
-        for store in stores.values():
-            if store_data["name"] == store["name"] :
-                abort(400,message=""" Bad request,
-                    your store name is exists
-                    before enter another name """)
-            
+        #                  
         store_id = uuid.uuid4().hex
-        new_store = {
-        **store_data, "id": store_id
-        }
+        new_store = StoreModel(id= store_id,**store_data)
         #
-        stores[store_id] = new_store
+        try:
+            db.session.add(new_store)
+            db.session.commit()
+        except IntegrityError:
+            abort (400, "problem accured when adding the store to sqflite")
+        except SQLAlchemyError:
+            abort(500, "the market name is exists before ")
         return new_store 
         
+
+#   for store in stores.values():
+#             if store_data["name"] == store["name"] :
+#                 abort(400,message=""" Bad request,
+#                     your store name is exists
+#                     before enter another name """)
